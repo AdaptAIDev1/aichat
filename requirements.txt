@@ -7,3 +7,5 @@ requests
 pyrebase
 OpenAI
 pycryptodome
+setuptools==68.2.2
+wheel==0.41.2
