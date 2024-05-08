@@ -6,3 +6,4 @@ streamlit
 requests
 pyrebase
 OpenAI
+pycryptodome>=3.9.8
