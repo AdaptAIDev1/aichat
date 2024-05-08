@@ -32,7 +32,7 @@ def fetch_models():
             return models
         else:
             return ["Error: Could not retrieve models - HTTP Status " + str(response.status_code)]
-    except requests.exceptions.RequestException as e:
+    except requests.RequestException as e:
         return ["Error: Request failed - " + str(e)]
 
 def login():
@@ -75,7 +75,7 @@ def send_prompt_to_local_llm(prompt, model_name):
         else:
             return f"Error: {response.status_code} - {response.text}"
     except requests.RequestException as e:
-        return f"Error sending POST request: {e}"        
+        return f"Error sending POST request: {e}"
 
 def main():
     # Display logo if available
@@ -86,34 +86,60 @@ def main():
         st.sidebar.text("Logged in as: {}".format(st.session_state['user']['email']))
         # Fetch available models from endpoint
         models = fetch_models()
-        selected_model = st.sidebar.selectbox("Select Language Model", models)
+
+        if 'messages' not in st.session_state:
+            st.session_state.messages = {model: [] for model in models}
+
+        if 'hist_prompt' not in st.session_state:
+            st.session_state.hist_prompt = {model: [] for model in models}    
+        
+        # Create dynamic tabs for each selected model
+        tabs = st.tabs(models)
+
+        for tab, model in zip(tabs, models):
+            with tab:
+                tab_container = st.container()
+                chat_container = st.container()
+
+                with tab_container:
+                    with chat_container:
+                        for message in st.session_state.messages[model]:
+                            with st.chat_message(message["role"]):
+                                st.markdown(message["content"])
+
+                st.expander("", expanded=True)            
+
+                input_disabled = st.session_state.get('input_disabled', False)
+                user_input = st.chat_input(f"Message {model}...", key=f"chat_input_{model}", disabled=input_disabled)
+
+                if prompt := user_input:
+                    # Append user message to the current model's history
+                    st.session_state.messages[model].append({"role": "user", "content": prompt})
+                    with chat_container:
+                        with st.chat_message("user"):
+                            st.markdown(prompt)
+
+                    # Disable the text input
+                    st.session_state['input_disabled'] = True
+
+                    # Call LLM function and get response
+                    with st.spinner("Processing..."):
+                        prompt_text = ' '.join(st.session_state.hist_prompt[model]) 
+                        response = send_prompt_to_local_llm("use this as context of the propmting:  " + prompt_text + " Last user propmt:  "+ prompt, model)
+                        st.session_state.hist_prompt[model].append(" user prompt: " + prompt + " your response: " + response)
+
+                    # Display LLM response and update message history
+                    with chat_container:
+                        with st.chat_message("assistant"):
+                            st.markdown(response)
+                    st.session_state.messages[model].append({"role": "assistant", "content": response})
+
+                    # Re-enable the text input immediately
+                    st.session_state['input_disabled'] = False
+
         logout()
     else:
         login()
-
-
-    if 'user' in st.session_state:
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        if prompt := st.chat_input("Message LLM..."):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.spinner("Processing..."):
-                # Call local LLM function
-                response = send_prompt_to_local_llm(prompt, selected_model)
-
-            with st.chat_message("assistant"):
-                st.markdown(response)
-
-            # Append assistant response to messages
-            st.session_state.messages.append({"role": "assistant", "content": response})
 
 if __name__ == '__main__':
     main()
